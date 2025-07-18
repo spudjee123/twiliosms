@@ -19,8 +19,8 @@ const {
 
 const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-// ✅ โหลด settings จาก settings.json
-const settingsPath = path.join(__dirname, 'settings.json');
+// === โหลด settings จากไฟล์ ===
+const settingsPath = path.join(__dirname, 'setting.json');
 let settings = {
   voice: 'สวัสดีค่ะ วันนี้เรามีโปรโมชั่นพิเศษ หากคุณต้องการรับลิงก์ทาง SMS กด 1 ค่ะ',
   sms: 'โปรโมชั่นพิเศษ! คลิกลิงก์เพื่อรับสิทธิ์เลย: https://lin.ee/xxxxx'
@@ -36,7 +36,7 @@ try {
   console.error('❌ โหลด settings ไม่สำเร็จ:', err.message);
 }
 
-// 📞 เมื่อมีสายเข้า
+// === เสียงเมื่อมีสายเข้า ===
 app.post('/voice', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const gather = twiml.gather({
@@ -50,16 +50,16 @@ app.post('/voice', (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
-// 📩 เมื่อกด 1 ส่ง SMS
+// === เมื่อกดปุ่ม ===
 app.post('/handle-key', async (req, res) => {
   const digit = req.body.Digits;
-  const customerNumber = req.body.To;
+  const to = req.body.To;
   const twiml = new twilio.twiml.VoiceResponse();
 
   if (digit === '1') {
     try {
       await client.messages.create({
-        to: customerNumber,
+        to,
         from: TWILIO_FROM_NUMBER,
         body: settings.sms
       });
@@ -76,12 +76,12 @@ app.post('/handle-key', async (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
-// 📲 โทรออก
+// === โทรออก ===
 app.post('/call', async (req, res) => {
   const { numbers } = req.body;
 
   if (!Array.isArray(numbers) || numbers.length === 0) {
-    return res.status(400).json({ success: false, error: 'ไม่พบหมายเลขโทรศัพท์' });
+    return res.status(400).json({ success: false, error: 'กรุณาระบุหมายเลขโทรศัพท์' });
   }
 
   const results = [];
@@ -94,51 +94,47 @@ app.post('/call', async (req, res) => {
       });
       results.push(to);
     } catch (err) {
-      console.error(`❌ โทรไม่สำเร็จ: ${to}:`, err.message);
+      console.error(`❌ โทรไม่สำเร็จ: ${to}`, err.message);
     }
   }
 
-  if (results.length > 0) {
-    res.json({ success: true, results });
-  } else {
-    res.json({ success: false, error: 'โทรไม่สำเร็จทั้งหมด' });
-  }
+  res.json({ success: results.length > 0, results });
 });
 
-// 🔧 อัปเดต settings (เฉพาะ voice กับ sms)
+// === อัปเดตข้อความจากหน้าเว็บ ===
 app.post('/update-settings', (req, res) => {
   const { voice, sms } = req.body;
   if (!voice || !sms) {
-    return res.status(400).json({ success: false, error: 'ข้อมูลไม่ครบถ้วน' });
+    return res.status(400).json({ success: false, error: 'กรุณากรอกข้อความให้ครบ' });
   }
 
   settings = { voice, sms };
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    console.log('💾 อัปเดต settings แล้ว:', settings);
+    console.log('💾 บันทึก settings:', settings);
     res.json({ success: true });
   } catch (err) {
-    console.error('❌ เขียนไฟล์ settings ไม่สำเร็จ:', err.message);
-    res.status(500).json({ success: false, error: 'บันทึกไม่สำเร็จ' });
+    console.error('❌ บันทึกไม่สำเร็จ:', err.message);
+    res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการบันทึก' });
   }
 });
 
-// 📤 API แสดง settings ปัจจุบัน
+// === ดึงค่าข้อความล่าสุด ===
 app.get('/settings', (req, res) => {
   res.json(settings);
 });
 
-// 🌐 หน้าเว็บ
+// === หน้า UI index.html ===
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ▶️ Start Server
 const port = PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
 });
+
 
 
 // const express = require('express');
