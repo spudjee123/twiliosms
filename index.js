@@ -63,7 +63,7 @@ app.post('/handle-key', async (req, res) => {
         from: TWILIO_FROM_NUMBER,
         body: settings.sms
       });
-      twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้ว ขอบคุณที่ใช้บริการค่ะ');
+      twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้วค่ะ ขอบคุณที่ใช้บริการค่ะ');
     } catch (err) {
       console.error('❌ ส่ง SMS ไม่สำเร็จ:', err.message);
       twiml.say({ language: 'th-TH' }, 'ระบบไม่สามารถส่งข้อความได้ในขณะนี้');
