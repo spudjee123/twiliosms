@@ -3,10 +3,7 @@ const twilio = require('twilio');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
-
-// ใช้ fetch ที่มากับ Node.js v18+
-// หากใช้ Node เวอร์ชันเก่า อาจต้องติดตั้ง node-fetch: npm install node-fetch
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 dotenv.config();
 const app = express();
@@ -42,11 +39,9 @@ try {
 
 // === เสียงเมื่อมีสายเข้า ===
 app.post('/voice', (req, res) => {
-  // รับ callback URL จาก query parameter ที่ส่งมาจาก Google Script
   const { callbackUrl } = req.query;
   const twiml = new twilio.twiml.VoiceResponse();
-  
-  // สร้าง action URL สำหรับ gather โดยแนบ callback URL ไปด้วย
+
   let actionUrl = '/handle-key';
   if (callbackUrl) {
     actionUrl += `?callbackUrl=${encodeURIComponent(callbackUrl)}`;
@@ -54,7 +49,7 @@ app.post('/voice', (req, res) => {
 
   const gather = twiml.gather({
     numDigits: 1,
-    action: actionUrl, // ใช้ actionUrl ที่สร้างขึ้น
+    action: actionUrl,
     method: 'POST'
   });
 
@@ -63,28 +58,22 @@ app.post('/voice', (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
-// === เมื่อกดปุ่ม ===
+// === เมื่อผู้ใช้กดปุ่ม ===
 app.post('/handle-key', async (req, res) => {
-  // รับ callback URL จาก query parameter
   const { callbackUrl } = req.query;
   const digit = req.body.Digits;
   const callSid = req.body.CallSid;
   const to = req.body.To;
   const twiml = new twilio.twiml.VoiceResponse();
 
-  // --- ส่วนที่เพิ่มเข้ามา: ส่งข้อมูลการกดปุ่มกลับไปที่ Google Script ---
   if (callbackUrl && digit) {
-    const callbackPayload = new URLSearchParams({
-        CallSid: callSid,
-        Digits: digit
-    });
+    const callbackPayload = new URLSearchParams({ CallSid: callSid, Digits: digit });
     fetch(callbackUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: callbackPayload.toString()
     }).catch(err => console.error('Error forwarding digits to callback:', err));
   }
-  // --- จบส่วนที่เพิ่มเข้ามา ---
 
   if (digit === '1') {
     try {
@@ -95,7 +84,7 @@ app.post('/handle-key', async (req, res) => {
       twiml.say({ language: 'th-TH' }, 'ขออภัยค่ะ ไม่สามารถส่งข้อความได้ในขณะนี้');
     }
   } else if (digit === '2') {
-    if (settings.fallbackNumbers && settings.fallbackNumbers.length > 0) {
+    if (settings.fallbackNumbers?.length) {
       twiml.say({ language: 'th-TH' }, 'กำลังโอนสายไปยังเจ้าหน้าที่ กรุณารอสักครู่');
       const dial = twiml.dial();
       settings.fallbackNumbers.forEach(num => dial.number(num));
@@ -110,7 +99,7 @@ app.post('/handle-key', async (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
-// === โทรออก (สำหรับหน้าเว็บ) ===
+// === โทรออก (จากหน้าเว็บ) ===
 app.post('/call', async (req, res) => {
   const { numbers } = req.body;
   if (!Array.isArray(numbers) || numbers.length === 0) {
@@ -125,16 +114,16 @@ app.post('/call', async (req, res) => {
         from: TWILIO_FROM_NUMBER,
         url: `https://${req.headers.host}/voice`
       });
-      results.push({ to: to, sid: call.sid });
+      results.push(to);
     } catch (err) {
       console.error(`❌ โทรไม่สำเร็จ: ${to}`, err.message);
     }
   }
+
   res.json({ success: results.length > 0, results });
 });
 
-
-// === อัปเดตและดึงค่า Settings (สำหรับหน้าเว็บ) ===
+// === อัปเดต / โหลดค่า settings สำหรับ UI ===
 app.post('/update-settings', (req, res) => {
   settings = { ...settings, ...req.body };
   try {
@@ -155,5 +144,5 @@ app.get('/', (req, res) => {
 
 const port = PORT || 3000;
 app.listen(port, () => {
-  console.log(`🚀 Server is running on port ${port}`);
+  console.log(`🚀 Server started on port ${port}`);
 });
