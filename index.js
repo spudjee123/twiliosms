@@ -22,8 +22,9 @@ const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 // === โหลด settings จากไฟล์ ===
 const settingsPath = path.join(__dirname, 'setting.json');
 let settings = {
-  voice: 'สวัสดีค่ะ วันนี้เรามีโปรโมชั่นพิเศษ หากคุณต้องการรับลิงก์ทาง SMS กด 1 ค่ะ',
-  sms: 'โปรโมชั่นพิเศษ! คลิกลิงก์เพื่อรับสิทธิ์เลย: https://lin.ee/xxxxx'
+  voice: 'สวัสดีค่ะ กรุณากด 1 เพื่อรับ SMS หรือกด 2 เพื่อโอนสายค่ะ',
+  sms: 'โปรโมชั่นพิเศษ! คลิกลิงก์: https://lin.ee/xxxxx',
+  fallbackNumbers: [] // ค่าเริ่มต้น
 };
 
 try {
@@ -36,8 +37,12 @@ try {
   console.error('❌ โหลด settings ไม่สำเร็จ:', err.message);
 }
 
+// === Middleware ตรวจสอบลายเซ็น Twilio เพื่อความปลอดภัย ===
+// ป้องกันคนนอกยิง webhook ของเราโดยตรง
+const twilioAuthMiddleware = twilio.webhook();
+
 // === เสียงเมื่อมีสายเข้า ===
-app.post('/voice', (req, res) => {
+app.post('/voice', twilioAuthMiddleware, (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const gather = twiml.gather({
     numDigits: 1,
@@ -46,12 +51,13 @@ app.post('/voice', (req, res) => {
   });
 
   gather.say({ language: 'th-TH' }, settings.voice);
-  twiml.say({ language: 'th-TH' }, 'ขอบคุณค่ะ');
+  // หากผู้ใช้ไม่กดอะไรเลย จะเล่นข้อความนี้แล้ววางสาย
+  twiml.say({ language: 'th-TH' }, 'ไม่ได้รับการตอบรับ ขอบคุณค่ะ'); 
   res.type('text/xml').send(twiml.toString());
 });
 
 // === เมื่อกดปุ่ม ===
-app.post('/handle-key', async (req, res) => {
+app.post('/handle-key', twilioAuthMiddleware, async (req, res) => {
   const digit = req.body.Digits;
   const to = req.body.To;
   const twiml = new twilio.twiml.VoiceResponse();
@@ -63,13 +69,22 @@ app.post('/handle-key', async (req, res) => {
         from: TWILIO_FROM_NUMBER,
         body: settings.sms
       });
-      twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้วค่ะ ขอบคุณที่ใช้บริการค่ะ');
+      twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้วค่ะ ขอบคุณค่ะ');
     } catch (err) {
       console.error('❌ ส่ง SMS ไม่สำเร็จ:', err.message);
-      twiml.say({ language: 'th-TH' }, 'ระบบไม่สามารถส่งข้อความได้ในขณะนี้');
+      twiml.say({ language: 'th-TH' }, 'ขออภัยค่ะ ไม่สามารถส่งข้อความได้ในขณะนี้');
+    }
+  } else if (digit === '2') {
+    // ใช้เบอร์โอนสายจาก settings
+    if (settings.fallbackNumbers && settings.fallbackNumbers.length > 0) {
+      twiml.say({ language: 'th-TH' }, 'กำลังโอนสายไปยังเจ้าหน้าที่ กรุณารอสักครู่');
+      const dial = twiml.dial();
+      settings.fallbackNumbers.forEach(num => dial.number(num));
+    } else {
+      twiml.say({ language: 'th-TH' }, 'ขออภัยค่ะ ไม่มีเบอร์เจ้าหน้าที่สำหรับโอนสายในขณะนี้');
     }
   } else {
-    twiml.say({ language: 'th-TH' }, 'คุณไม่ได้กด 1 ระบบจะวางสายค่ะ');
+    twiml.say({ language: 'th-TH' }, 'คุณไม่ได้กด 1 หรือ 2 ขอบคุณค่ะ');
   }
 
   twiml.hangup();
@@ -90,7 +105,7 @@ app.post('/call', async (req, res) => {
       await client.calls.create({
         to,
         from: TWILIO_FROM_NUMBER,
-        url: `https://${req.headers.host}/voice`
+        url: `https://${req.headers.host}/voice` // URL ที่ Twilio จะเรียกกลับมา
       });
       results.push(to);
     } catch (err) {
@@ -103,12 +118,13 @@ app.post('/call', async (req, res) => {
 
 // === อัปเดตข้อความจากหน้าเว็บ ===
 app.post('/update-settings', (req, res) => {
-  const { voice, sms } = req.body;
+  const { voice, sms, fallbackNumbers } = req.body;
   if (!voice || !sms) {
     return res.status(400).json({ success: false, error: 'กรุณากรอกข้อความให้ครบ' });
   }
-
-  settings = { voice, sms };
+  
+  // อัปเดตค่า settings ในหน่วยความจำและบันทึกลงไฟล์
+  settings = { ...settings, ...req.body };
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
