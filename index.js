@@ -1,6 +1,6 @@
 const express = require('express');
 const twilio = require('twilio');
-const dotenv = require('dotenv');
+const dotenv =require('dotenv');
 const path = require('path');
 const fs = require('fs');
 
@@ -39,10 +39,11 @@ try {
 
 // === Middleware ตรวจสอบลายเซ็น Twilio เพื่อความปลอดภัย ===
 // ป้องกันคนนอกยิง webhook ของเราโดยตรง
-const twilioAuthMiddleware = twilio.webhook();
+// const twilioAuthMiddleware = twilio.webhook(); // ปิดใช้งานชั่วคราวเพื่อทดสอบ
 
 // === เสียงเมื่อมีสายเข้า ===
-app.post('/voice', twilioAuthMiddleware, (req, res) => {
+// ลบ twilioAuthMiddleware ออกจากบรรทัดนี้เพื่อปิดการตรวจสอบ
+app.post('/voice', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const gather = twiml.gather({
     numDigits: 1,
@@ -57,7 +58,8 @@ app.post('/voice', twilioAuthMiddleware, (req, res) => {
 });
 
 // === เมื่อกดปุ่ม ===
-app.post('/handle-key', twilioAuthMiddleware, async (req, res) => {
+// ลบ twilioAuthMiddleware ออกจากบรรทัดนี้เพื่อปิดการตรวจสอบ
+app.post('/handle-key', async (req, res) => {
   const digit = req.body.Digits;
   const to = req.body.To;
   const twiml = new twilio.twiml.VoiceResponse();
