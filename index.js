@@ -28,14 +28,17 @@ let settings = {
   fallbackNumbers: []
 };
 
-try {
-  if (fs.existsSync(settingsPath)) {
-    const file = fs.readFileSync(settingsPath, 'utf-8');
-    settings = { ...settings, ...JSON.parse(file) };
+function reloadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const file = fs.readFileSync(settingsPath, 'utf-8');
+      settings = { ...settings, ...JSON.parse(file) };
+    }
+  } catch (err) {
+    console.error('❌ โหลด settings ไม่สำเร็จ:', err.message);
   }
-} catch (err) {
-  console.error('❌ โหลด settings ไม่สำเร็จ:', err.message);
 }
+reloadSettings();
 
 // === เสียงเมื่อมีสายเข้า ===
 app.post('/voice', (req, res) => {
@@ -59,22 +62,14 @@ app.post('/voice', (req, res) => {
 });
 
 // === เมื่อผู้ใช้กดปุ่ม ===
-app.post('/handle-key', async (req, res) => {
+app.post('/handle-key', (req, res) => {
   const { callbackUrl } = req.query;
   const digit = req.body.Digits;
   const callSid = req.body.CallSid;
   const to = req.body.To;
   const twiml = new twilio.twiml.VoiceResponse();
 
-  // 🔁 โหลด setting สดใหม่จากไฟล์
-  try {
-    if (fs.existsSync(settingsPath)) {
-      const file = fs.readFileSync(settingsPath, 'utf-8');
-      settings = { ...settings, ...JSON.parse(file) };
-    }
-  } catch (err) {
-    console.error('❌ โหลด settings สดใหม่ไม่สำเร็จ:', err.message);
-  }
+  reloadSettings();
 
   if (callbackUrl && digit) {
     const callbackPayload = new URLSearchParams({ CallSid: callSid, Digits: digit });
@@ -82,17 +77,17 @@ app.post('/handle-key', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: callbackPayload.toString()
-    }).catch(err => console.error('Error forwarding digits to callback:', err));
+    }).catch(err => console.error('❌ Error sending callback:', err.message));
   }
 
   if (digit === '1') {
-    try {
-      await client.messages.create({ to, from: TWILIO_FROM_NUMBER, body: settings.sms });
-      twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้วค่ะ ขอบคุณค่ะ');
-    } catch (err) {
-      console.error('❌ ส่ง SMS ไม่สำเร็จ:', err.message);
-      twiml.say({ language: 'th-TH' }, 'ขออภัยค่ะ ไม่สามารถส่งข้อความได้ในขณะนี้');
-    }
+    // 🔁 ส่ง SMS แบบ async
+    client.messages
+      .create({ to, from: TWILIO_FROM_NUMBER, body: settings.sms })
+      .then(msg => console.log('✅ ส่ง SMS แล้ว:', msg.sid))
+      .catch(err => console.error('❌ ส่ง SMS ไม่สำเร็จ:', err.message));
+
+    twiml.say({ language: 'th-TH' }, 'ส่งลิงก์โปรโมชั่นให้ทาง SMS แล้วค่ะ ขอบคุณค่ะ');
   } else if (digit === '2') {
     if (settings.fallbackNumbers?.length) {
       twiml.say({ language: 'th-TH' }, 'กำลังโอนสายไปยังเจ้าหน้าที่ กรุณารอสักครู่');
@@ -133,7 +128,7 @@ app.post('/call', async (req, res) => {
   res.json({ success: results.length > 0, results });
 });
 
-// === อัปเดต / โหลดค่า settings สำหรับ UI ===
+// === อัปเดต / โหลด settings ===
 app.post('/update-settings', (req, res) => {
   settings = { ...settings, ...req.body };
   try {
@@ -148,6 +143,7 @@ app.get('/settings', (req, res) => {
   res.json(settings);
 });
 
+// === หน้าเว็บหลัก ===
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -225,6 +221,16 @@ app.listen(port, () => {
 //   const callSid = req.body.CallSid;
 //   const to = req.body.To;
 //   const twiml = new twilio.twiml.VoiceResponse();
+
+//   // 🔁 โหลด setting สดใหม่จากไฟล์
+//   try {
+//     if (fs.existsSync(settingsPath)) {
+//       const file = fs.readFileSync(settingsPath, 'utf-8');
+//       settings = { ...settings, ...JSON.parse(file) };
+//     }
+//   } catch (err) {
+//     console.error('❌ โหลด settings สดใหม่ไม่สำเร็จ:', err.message);
+//   }
 
 //   if (callbackUrl && digit) {
 //     const callbackPayload = new URLSearchParams({ CallSid: callSid, Digits: digit });
